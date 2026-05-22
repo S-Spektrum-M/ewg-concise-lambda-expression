@@ -1,13 +1,13 @@
 ---
 title: "Concise Lambda Expressions"
 document: PXXXXR0
-date: 2026-05-12
+date: \today
 audience:
   - EWGI
   - EWG
 author:
   - name: Siddharth Mohanty
-    email: <smohanty22@andrew.cmu.edu>
+    email: <smohant5@ucsc.edu>
 toc: true
 ---
 
