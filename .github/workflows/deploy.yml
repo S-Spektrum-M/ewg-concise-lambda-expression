@@ -33,7 +33,9 @@ jobs:
 
       - name: Build proposal HTML and PDF
         run: |
-          make PROPOSAL.html PROPOSAL.pdf
+          make PROPOSAL.html
+          make PROPOSAL.pdf
+
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
