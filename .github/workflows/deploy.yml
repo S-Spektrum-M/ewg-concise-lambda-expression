@@ -1,0 +1,56 @@
+name: Build and Deploy WG21 Paper
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pandoc texlive-xetex texlive-fonts-recommended texlive-latex-recommended texlive-latex-extra fonts-dejavu-core
+
+      - name: Build proposal HTML and PDF
+        run: |
+          make PROPOSAL.html PROPOSAL.pdf
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Prepare site directory
+        run: |
+          mkdir -p _site
+          # Copy the HTML to index.html so it serves as the home page
+          cp generated/PROPOSAL.html _site/index.html
+          # Copy the PDF so it can be downloaded at /PROPOSAL.pdf
+          cp generated/PROPOSAL.pdf _site/PROPOSAL.pdf
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
