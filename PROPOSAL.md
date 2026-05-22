@@ -378,12 +378,9 @@ The analysis discovered a total of **43,336 lambda expressions**. The results ar
 
 # Implementation experience
 
-A prototype implementation in Clang is in progress and will be reported
-in a subsequent revision (R1). The intended approach is to lower the
-*concise-lambda-expression* to its explicit equivalent in
-`Sema::ActOnLambdaExpr` after parameter-list normalization, reusing the
-existing lambda code path entirely. No code-generation changes are
-expected.
+A minimal working prototype reference implementation in Clang has been developed
+and is available [here](https://github.com/S-Spektrum-M/llvm-project). Implementation experience will be shared in a
+future revision.
 
 # Wording sketch
 
