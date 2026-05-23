@@ -251,9 +251,22 @@ explicitly for committee consideration.
 
 ## `noexcept` Semantics
 
-Because concise lambdas omit the `lambda-specifier-seq`, they cannot be explicitly marked `noexcept`. We considered specifying that concise lambdas implicitly deduce their exception specification (i.e., lowering to `noexcept(noexcept(E))`).
+Because concise lambdas omit the *lambda-specifier-seq*, they cannot be explicitly
+marked `noexcept`. A natural alternative is implicit deduction: lowering to
+`noexcept(noexcept(E))`.
 
-We rejected this to maintain strict equivalence with explicit lambdas. Standard lambdas do not implicitly deduce `noexcept`. If a user refactors a concise lambda into an explicit lambda to add a capture, the closure type's properties should not silently degrade. Users requiring a strict `noexcept` callable must use the explicit lambda form.
+Despite this appeal, the current design does not deduce `noexcept`.
+The primary motivation is refactoring stability: when a user converts a concise
+lambda into an explicit lambda (e.g., to add a capture or a second statement),
+the closure type's exception specification should not silently change. An
+implicitly-deduced `noexcept` in the concise form would be quietly
+lost in the explicit form, potentially weakening `noexcept`
+guarantees that callers had come to rely on without any diagnostic.
+
+This mirrors existing lambda behaviour as standard lambdas do not implicitly deduce `noexcept` either.
+This decision keeps the two forms interchangeable in this respect.
+
+Users requiring a `noexcept` callable must use the explicit lambda form and spell the specifier.
 
 ## Interaction With `constexpr`
 
