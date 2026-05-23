@@ -5,7 +5,7 @@ to introduce a concise lambda expression syntax to C++.
 
 * Document Number: PXXXXR0
 * Title: Concise Lambda Expressions
-* Author: Siddharth Mohanty (<smohanty22@andrew.cmu.edu>)
+* Author: Siddharth Mohanty
 
 ## Proposal Draft
 
