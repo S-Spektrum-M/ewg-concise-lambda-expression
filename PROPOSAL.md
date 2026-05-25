@@ -26,8 +26,9 @@ existing lambda grammar untouched, and provides no facility for capture.
 
 Captureless single-expression lambdas are by a substantial margin the most
 common shape of lambda observed in modern C++ codebases. For instance, an
-empirical analysis of the LLVM codebase reveals that 22.61% of all lambda functions
-(nearly 1 in 4) are captureless and single-expression. Particularly in
+empirical analysis across five major codebases (LLVM, Chromium, Folly, Abseil, and QtBase)
+reveals that 23.45% of all lambda functions (nearly 1 in 4) are captureless
+and single-expression. Particularly in
 range pipelines, algorithm calls, and projection arguments, the
 syntactic overhead of the current form is disproportionate to their
 semantic weight.
@@ -364,30 +365,40 @@ lambda syntax, semantics, or closure-type properties are changed.
 ABI is unaffected: a concise lambda lowers to an explicit lambda whose
 ABI is already specified.
 
-# Empirical Analysis: LLVM Codebase Study
+# Empirical Analysis: Large-Scale C++ Codebases
 
-To evaluate the assertion that captureless, single-expression lambdas are the dominant form of lambdas in modern C++, we conducted an empirical analysis on the **LLVM** codebase (specifically, the `llvm-project` mono-repo).
+To evaluate the assertion that captureless, single-expression lambdas are the dominant form of lambdas in modern C++, we conducted an empirical analysis across several major open-source C++ codebases: **LLVM**, **Chromium**, **QtBase**, **Folly**, and **Abseil**.
 
-LLVM represents a large-scale, performance-critical C++ project containing extensive modern C++ usage (e.g., standard library algorithms, range adapters, and projections).
+These repositories represent a diverse mix of large-scale, performance-critical C++ projects containing extensive modern C++ usage (e.g., standard library algorithms, range adapters, and projections).
 
-A custom lexical parser scanned **55,374 C++ source and header files** in LLVM to classify all C++ lambda expressions based on their captures and body complexity.
+A custom lexical parser scanned over **196,000 C++ source and header files** across these codebases to classify all C++ lambda expressions based on their captures and body complexity.
 
 ## Findings
 
-The analysis discovered a total of **43,336 lambda expressions**. The results are categorized as follows:
+The analysis discovered a grand total of **117,548 lambda expressions**. The aggregated results across all five codebases are categorized as follows:
 
 | Metric | Count | Percentage |
 | :--- | :--- | :--- |
-| **Total Lambdas Found** | **43,336** | **100.00%** |
-| **Captureless Lambdas (`[]`)** | **15,612** | **36.03%** |
-| **Captureless Single-Expression Lambdas** | **9,799** | **22.61%** of all lambdas |
-| **Single-Expression % of Captureless** | **9,799 / 15,612** | **62.77%** of captureless lambdas |
+| **Total Lambdas Found** | **117,548** | **100.00%** |
+| **Captureless Lambdas (`[]`)** | **45,737** | **38.91%** |
+| **Captureless Single-Expression Lambdas** | **27,564** | **23.45%** of all lambdas |
+| **Single-Expression % of Captureless** | **27,564 / 45,737** | **60.27%** of captureless lambdas |
+
+### Breakdown by Repository
+
+| Repository | Files Scanned | Total Lambdas | Captureless | Captureless Single-Expr |
+| :--- | :--- | :--- | :--- | :--- |
+| **LLVM** | 55,413 | 43,418 | 15,627 (36.0%) | 9,810 (22.6%) |
+| **Chromium** | 129,516 | 59,145 | 24,853 (42.0%) | 14,611 (24.7%) |
+| **QtBase** | 8,666 | 6,517 | 2,132 (32.7%) | 1,246 (19.1%) |
+| **Folly** | 2,309 | 7,409 | 2,518 (34.0%) | 1,563 (21.1%) |
+| **Abseil** | 867 | 1,059 | 607 (57.3%) | 334 (31.5%) |
 
 ## Analysis
 
-- **High Dominance of Concise Shape**: Captureless single-expression lambdas represent nearly **1 in 4 lambdas** (22.61%) inside the LLVM codebase.
-- **Predominant Captureless Form**: Out of all lambdas that do not require any captures (and thus could utilize a captureless concise form), **62.77%** consist of a single expression.
-- **Syntactic Overhead Reduction**: Introducing the proposed concise syntax `(params) => expr` would eliminate up to 18 characters of syntactic scaffolding for **9,799 instances** in LLVM alone, significantly improving code readability and reducing semantic clutter.
+- **High Dominance of Concise Shape**: Captureless single-expression lambdas consistently represent nearly **1 in 4 lambdas** (23.45%) across a wide variety of industry C++ codebases.
+- **Predominant Captureless Form**: Out of all lambdas that do not require any captures (and thus could utilize a captureless concise form), **60.27%** consist of a single expression.
+- **Syntactic Overhead Reduction**: Introducing the proposed concise syntax `(params) => expr` would eliminate up to 18 characters of syntactic scaffolding for over **27,500 instances** in these repositories alone, significantly improving code readability and reducing semantic clutter.
 
 # Implementation experience
 

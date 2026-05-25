@@ -381,32 +381,21 @@ def run_self_tests():
     if passed != len(test_cases):
         sys.exit(1)
 
-def main():
-    parser = argparse.ArgumentParser(description="Count lambda functions in a C++ codebase.")
-    parser.add_argument('--dir', default='llvm-project', help='Directory to scan recursively.')
-    parser.add_argument('--test', action='store_true', help='Run self-tests.')
-    parser.add_argument('-w', '--workers', type=int, default=None, help='Number of multiprocessing workers.')
-    parser.add_argument('-v', '--verbose', action='store_true', help='Verbose output.')
-    args = parser.parse_args()
+REPO_URLS = {
+    "llvm-project": "https://github.com/llvm/llvm-project.git",
+    "abseil-cpp": "https://github.com/abseil/abseil-cpp.git",
+    "chromium": "https://github.com/chromium/chromium.git",
+    "folly": "https://github.com/facebook/folly.git",
+    "qtbase": "https://github.com/qt/qtbase.git",
+}
 
-    if args.test:
-        run_self_tests()
-        return
-
-    if not os.path.exists(args.dir):
-        print(f"Directory '{args.dir}' does not exist. Cloning llvm/llvm-project from GitHub...")
-        try:
-            subprocess.run(["git", "clone", "--depth", "1", "https://github.com/llvm/llvm-project.git", args.dir], check=True)
-        except subprocess.CalledProcessError as e:
-            print(f"Error: Failed to clone repository: {e}")
-            sys.exit(1)
-
-    print(f"Scanning directory: {args.dir}")
+def analyze_directory(repo_dir, workers, verbose):
+    print(f"\nScanning directory: {repo_dir}")
     print("Collecting C++ files...")
 
     extensions = {'.cpp', '.h', '.hpp', '.cc', '.cxx', '.hh', '.hxx'}
     files_to_scan = []
-    for root, _, files in os.walk(args.dir):
+    for root, _, files in os.walk(repo_dir):
         # Skip .git directories
         if '.git' in root.split(os.sep):
             continue
@@ -416,13 +405,13 @@ def main():
                 files_to_scan.append(os.path.join(root, file))
 
     num_files = len(files_to_scan)
-    print(f"Found {num_files} C++ source/header files.")
+    print(f"Found {num_files} C++ source/header files in {repo_dir}.")
 
     if num_files == 0:
         print("No files found to scan.")
-        return
+        return None
 
-    print(f"Analyzing files using up to {args.workers or 'default'} parallel processes...")
+    print(f"Analyzing files using up to {workers or 'default'} parallel processes...")
     start_time = time.time()
 
     total_lambdas = 0
@@ -431,10 +420,10 @@ def main():
     scanned_files_count = 0
     error_files = []
 
-    with ProcessPoolExecutor(max_workers=args.workers) as executor:
+    with ProcessPoolExecutor(max_workers=workers) as executor:
         results = executor.map(analyze_file, files_to_scan)
 
-        for idx, result in enumerate(results):
+        for result in results:
             if 'error' in result:
                 error_files.append(result)
                 continue
@@ -444,7 +433,7 @@ def main():
             total_captureless += result['captureless']
             total_captureless_single += result['captureless_single_expr']
 
-            if args.verbose and result['total'] > 0:
+            if verbose and result['total'] > 0:
                 print(f"\n[{result['filepath']}] - Found {result['total']} lambdas:")
                 for l in result['lambdas']:
                     cap_type = "captureless" if l['captureless'] else "captured"
@@ -456,23 +445,93 @@ def main():
                 print(f"Processed {scanned_files_count}/{num_files} files... ({elapsed:.1f}s)")
 
     elapsed_time = time.time() - start_time
-    print("\n" + "="*40)
+    
+    return {
+        'dir': repo_dir,
+        'scanned_files_count': scanned_files_count,
+        'elapsed_time': elapsed_time,
+        'error_files_count': len(error_files),
+        'total_lambdas': total_lambdas,
+        'total_captureless': total_captureless,
+        'total_captureless_single': total_captureless_single
+    }
+
+def main():
+    parser = argparse.ArgumentParser(description="Count lambda functions in a C++ codebase.")
+    parser.add_argument('--repos', nargs='+', default=list(REPO_URLS.keys()), help='Directories to scan (clones automatically if known).')
+    parser.add_argument('--test', action='store_true', help='Run self-tests.')
+    parser.add_argument('-w', '--workers', type=int, default=None, help='Number of multiprocessing workers.')
+    parser.add_argument('-v', '--verbose', action='store_true', help='Verbose output.')
+    args = parser.parse_args()
+
+    if args.test:
+        run_self_tests()
+        return
+
+    all_results = []
+
+    for repo_dir in args.repos:
+        if not os.path.exists(repo_dir):
+            if repo_dir in REPO_URLS:
+                url = REPO_URLS[repo_dir]
+                print(f"Directory '{repo_dir}' does not exist. Cloning {url} from GitHub...")
+                try:
+                    subprocess.run(["git", "clone", "--depth", "1", url, repo_dir], check=True)
+                except subprocess.CalledProcessError as e:
+                    print(f"Error: Failed to clone repository {repo_dir}: {e}")
+                    continue
+            else:
+                print(f"Directory '{repo_dir}' does not exist and no known URL to clone. Skipping.")
+                continue
+
+        res = analyze_directory(repo_dir, args.workers, args.verbose)
+        if res:
+            all_results.append(res)
+
+    print("\n" + "="*50)
     print("ANALYSIS RESULTS")
-    print("="*40)
-    print(f"Directory Scanned:       {args.dir}")
-    print(f"Total C++ Files Scanned: {scanned_files_count}")
-    print(f"Total Execution Time:    {elapsed_time:.2f} seconds")
-    print(f"Failed to Read Files:    {len(error_files)}")
-    print("-"*40)
-    print(f"Total Lambdas Found:     {total_lambdas}")
-    if total_lambdas > 0:
-        print(f"Captureless Lambdas:     {total_captureless} ({total_captureless / total_lambdas * 100:.2f}% of total)")
-        print(f"Captureless Single-Expr: {total_captureless_single} ({total_captureless_single / total_lambdas * 100:.2f}% of total)")
-        print(f"                         ({total_captureless_single / total_captureless * 100:.2f}% of captureless)")
-    else:
-        print("Captureless Lambdas:     0")
-        print("Captureless Single-Expr: 0")
-    print("="*40)
+    print("="*50)
+    
+    grand_total_lambdas = 0
+    grand_total_captureless = 0
+    grand_total_captureless_single = 0
+    
+    for res in all_results:
+        print(f"Directory Scanned:       {res['dir']}")
+        print(f"Total C++ Files Scanned: {res['scanned_files_count']}")
+        print(f"Total Execution Time:    {res['elapsed_time']:.2f} seconds")
+        print(f"Failed to Read Files:    {res['error_files_count']}")
+        print("-" * 40)
+        print(f"Total Lambdas Found:     {res['total_lambdas']}")
+        
+        grand_total_lambdas += res['total_lambdas']
+        grand_total_captureless += res['total_captureless']
+        grand_total_captureless_single += res['total_captureless_single']
+        
+        if res['total_lambdas'] > 0:
+            print(f"Captureless Lambdas:     {res['total_captureless']} ({res['total_captureless'] / res['total_lambdas'] * 100:.2f}% of total)")
+            print(f"Captureless Single-Expr: {res['total_captureless_single']} ({res['total_captureless_single'] / res['total_lambdas'] * 100:.2f}% of total)")
+            if res['total_captureless'] > 0:
+                print(f"                         ({res['total_captureless_single'] / res['total_captureless'] * 100:.2f}% of captureless)")
+        else:
+            print("Captureless Lambdas:     0")
+            print("Captureless Single-Expr: 0")
+        print("="*50)
+
+    if len(all_results) > 1:
+        print("\n" + "="*50)
+        print("GRAND TOTAL")
+        print("="*50)
+        print(f"Total Lambdas Found:     {grand_total_lambdas}")
+        if grand_total_lambdas > 0:
+            print(f"Captureless Lambdas:     {grand_total_captureless} ({grand_total_captureless / grand_total_lambdas * 100:.2f}% of total)")
+            print(f"Captureless Single-Expr: {grand_total_captureless_single} ({grand_total_captureless_single / grand_total_lambdas * 100:.2f}% of total)")
+            if grand_total_captureless > 0:
+                print(f"                         ({grand_total_captureless_single / grand_total_captureless * 100:.2f}% of captureless)")
+        else:
+            print("Captureless Lambdas:     0")
+            print("Captureless Single-Expr: 0")
+        print("="*50)
 
 if __name__ == '__main__':
     main()
