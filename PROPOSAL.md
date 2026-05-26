@@ -130,6 +130,11 @@ auto greet     = () => std::puts("hi");     // returns int (the result of puts)
 // Mixing inferred and explicit parameter forms
 auto clamp_pos = (int x) => x < 0 ? 0 : x;
 auto project_value = (const auto& db, y) => db[y];
+
+// Concepts, void, and throw
+auto add_one = (std::integral auto x) => x + 1;
+auto log_err = (e) => std::cerr << e;                   // Deduced void
+auto error = (x) => throw std::runtime_error("error");  // Deduced void
 ```
 
 ```cpp
@@ -150,11 +155,15 @@ std::visit(overloaded{
 
 ## Restrictions
 
-A *concise-lambda-expression* shall not: introduce a *lambda-capture*;
-declare a return type explicitly; declare a template parameter list;
-apply `mutable`, `static`, `consteval`, `constexpr`, or other `lambda-specifier`s;
-use a `requires-clause`; or contain a `compound-statement` body — the body
-is a single *assignment-expression*.
+A *concise-lambda-expression* shall not:
+- introduce a *lambda-capture*
+- declare a return type explicitly
+- declare a template parameter list
+- apply `mutable`, `static`, `consteval`, `constexpr`, or other *lambda-specifier*s
+- use a *requires-clause*
+- declare default arguments
+- declare parameter packs
+- or contain a *compound-statement* body.
 
 Code requiring any of these continues to use the existing
 *lambda-expression* form.
@@ -171,6 +180,13 @@ class of dangling-reference bugs into a syntactic refusal. If the body of the
 concise lambda would have required a capture, the compiler diagnoses an
 unrelated lookup failure for the named entity and the user falls back to
 the explicit form.
+
+It is acknowledged that this introduces a "syntax cliff."
+Empirical data (see [Empirical Analysis: Large-Scale C++ Codebases]) shows that single-expression lambdas that *do*
+capture state are actually slightly more common (29.22% of all lambdas)
+than those that do not (23.45%). However, extending the syntax to support explicit
+captures (e.g., `[capture_list] (params) => expr`) would reintroduce the capture group syntax that this
+proposal aims to eliminate, eroding the brevity of the construct.
 
 Concise lambdas may, of course, reference entities with linkage —
 globals, statics, member functions of an enclosing class via `this` from
@@ -223,6 +239,15 @@ user who wants by-value semantics writes `(auto x) => ...`; a user who
 wants const-lvalue semantics writes `(const auto& x) => ...`. Both are
 two characters longer than the bare-identifier form and immediately
 self-documenting at the point of use.
+
+## SFINAE and Perfect Forwarding
+
+Because a concise lambda implicitly deduces its return type via standard `auto` rules, it inherits the semantic limitations of standard deduced lambdas. Specifically:
+
+1.  **SFINAE Hostility:** The `operator()` template signature is unconditionally valid, and return type deduction occurs upon instantiation of the body. This means a concise lambda cannot be safely used to drive overload resolution or Concept-based branching (e.g., `std::invocable`), as the constraints will pass but substitution will yield a hard compilation error.
+2.  **No Return-Value Forwarding:** While the `auto&&` parameter perfectly binds to the caller's argument, the deduced `auto` return type always returns by value. It is impossible to perfectly forward a reference *out* of a concise lambda.
+
+Users requiring SFINAE-friendly predicates or reference-returning projections must continue to use the explicit lambda syntax with trailing return types (`-> decltype(x.foo())`). This proposal prioritizes a simple, safe default over complete generic programming parity.
 
 ## Why Parentheses Are Required Around the Parameter List
 
@@ -362,8 +387,10 @@ appear in any well-formed C++ program prior to this proposal; the new
 grammar production is reachable only via the new token. No existing
 lambda syntax, semantics, or closure-type properties are changed.
 
-ABI is unaffected: a concise lambda lowers to an explicit lambda whose
-ABI is already specified.
+One exceedingly minor edge case involves the preprocessor: token pasting
+`PASTE(=, >)` will now form a valid `=>` token under this proposal, whereas it yields an invalid token in C++23.
+
+ABI is unaffected: a concise lambda lowers to an explicit lambda whose ABI is already specified.
 
 # Empirical Analysis: Large-Scale C++ Codebases
 
@@ -382,22 +409,23 @@ The analysis discovered a grand total of **117,548 lambda expressions**. The agg
 | **Total Lambdas Found** | **117,548** | **100.00%** |
 | **Captureless Lambdas (`[]`)** | **45,737** | **38.91%** |
 | **Captureless Single-Expression Lambdas** | **27,564** | **23.45%** of all lambdas |
-| **Single-Expression % of Captureless** | **27,564 / 45,737** | **60.27%** of captureless lambdas |
+| **Captured Single-Expression Lambdas** | **34,348** | **29.22%** of all lambdas |
 
 ### Breakdown by Repository
 
-| Repository | Files Scanned | Total Lambdas | Captureless | Captureless Single-Expr |
-| :--- | :--- | :--- | :--- | :--- |
-| **LLVM** | 55,413 | 43,418 | 15,627 (36.0%) | 9,810 (22.6%) |
-| **Chromium** | 129,516 | 59,145 | 24,853 (42.0%) | 14,611 (24.7%) |
-| **QtBase** | 8,666 | 6,517 | 2,132 (32.7%) | 1,246 (19.1%) |
-| **Folly** | 2,309 | 7,409 | 2,518 (34.0%) | 1,563 (21.1%) |
-| **Abseil** | 867 | 1,059 | 607 (57.3%) | 334 (31.5%) |
+| Repository | Files Scanned | Total Lambdas | Captureless | Captureless Single-Expr | Captured Single-Expr |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **LLVM** | 55,413 | 43,418 | 15,627 (36.0%) | 9,810 (22.6%) | 13,055 (30.1%) |
+| **Chromium** | 129,516 | 59,145 | 24,853 (42.0%) | 14,611 (24.7%) | 16,603 (28.1%) |
+| **QtBase** | 8,666 | 6,517 | 2,132 (32.7%) | 1,246 (19.1%) | 2,313 (35.5%) |
+| **Folly** | 2,309 | 7,409 | 2,518 (34.0%) | 1,563 (21.1%) | 2,173 (29.3%) |
+| **Abseil** | 867 | 1,059 | 607 (57.3%) | 334 (31.5%) | 204 (19.3%) |
 
 ## Analysis
 
-- **High Dominance of Concise Shape**: Captureless single-expression lambdas consistently represent nearly **1 in 4 lambdas** (23.45%) across a wide variety of industry C++ codebases.
-- **Predominant Captureless Form**: Out of all lambdas that do not require any captures (and thus could utilize a captureless concise form), **60.27%** consist of a single expression.
+- **High Dominance of Single-Expression Shape**: Single-expression lambdas (both captured and captureless) represent a staggering **52.67%** of all lambdas across these codebases.
+- **Predominant Captureless Form**: Out of all lambdas that do not require any captures, **60.27%** consist of a single expression, making them prime candidates for the concise syntax.
+- **The Capture Gap**: While captureless single-expression lambdas are highly prevalent (23.45%), captured single-expression lambdas are actually more common (29.22%). This highlights the "syntax cliff" discussed in [Why no Captures].
 - **Syntactic Overhead Reduction**: Introducing the proposed concise syntax `(params) => expr` would eliminate up to 18 characters of syntactic scaffolding for over **27,500 instances** in these repositories alone, significantly improving code readability and reducing semantic clutter.
 
 # Implementation experience
