@@ -318,12 +318,14 @@ def analyze_file(filepath):
     total = len(lambdas)
     captureless = sum(1 for l in lambdas if l['captureless'])
     captureless_single_expr = sum(1 for l in lambdas if l['captureless'] and l['single_expression'])
+    captured_single_expr = sum(1 for l in lambdas if not l['captureless'] and l['single_expression'])
 
     return {
         'filepath': filepath,
         'total': total,
         'captureless': captureless,
         'captureless_single_expr': captureless_single_expr,
+        'captured_single_expr': captured_single_expr,
         'lambdas': lambdas
     }
 
@@ -417,6 +419,7 @@ def analyze_directory(repo_dir, workers, verbose):
     total_lambdas = 0
     total_captureless = 0
     total_captureless_single = 0
+    total_captured_single = 0
     scanned_files_count = 0
     error_files = []
 
@@ -432,6 +435,7 @@ def analyze_directory(repo_dir, workers, verbose):
             total_lambdas += result['total']
             total_captureless += result['captureless']
             total_captureless_single += result['captureless_single_expr']
+            total_captured_single += result['captured_single_expr']
 
             if verbose and result['total'] > 0:
                 print(f"\n[{result['filepath']}] - Found {result['total']} lambdas:")
@@ -445,7 +449,7 @@ def analyze_directory(repo_dir, workers, verbose):
                 print(f"Processed {scanned_files_count}/{num_files} files... ({elapsed:.1f}s)")
 
     elapsed_time = time.time() - start_time
-    
+
     return {
         'dir': repo_dir,
         'scanned_files_count': scanned_files_count,
@@ -453,7 +457,8 @@ def analyze_directory(repo_dir, workers, verbose):
         'error_files_count': len(error_files),
         'total_lambdas': total_lambdas,
         'total_captureless': total_captureless,
-        'total_captureless_single': total_captureless_single
+        'total_captureless_single': total_captureless_single,
+        'total_captured_single': total_captured_single
     }
 
 def main():
@@ -491,11 +496,12 @@ def main():
     print("\n" + "="*50)
     print("ANALYSIS RESULTS")
     print("="*50)
-    
+
     grand_total_lambdas = 0
     grand_total_captureless = 0
     grand_total_captureless_single = 0
-    
+    grand_total_captured_single = 0
+
     for res in all_results:
         print(f"Directory Scanned:       {res['dir']}")
         print(f"Total C++ Files Scanned: {res['scanned_files_count']}")
@@ -503,19 +509,22 @@ def main():
         print(f"Failed to Read Files:    {res['error_files_count']}")
         print("-" * 40)
         print(f"Total Lambdas Found:     {res['total_lambdas']}")
-        
+
         grand_total_lambdas += res['total_lambdas']
         grand_total_captureless += res['total_captureless']
         grand_total_captureless_single += res['total_captureless_single']
-        
+        grand_total_captured_single += res['total_captured_single']
+
         if res['total_lambdas'] > 0:
             print(f"Captureless Lambdas:     {res['total_captureless']} ({res['total_captureless'] / res['total_lambdas'] * 100:.2f}% of total)")
             print(f"Captureless Single-Expr: {res['total_captureless_single']} ({res['total_captureless_single'] / res['total_lambdas'] * 100:.2f}% of total)")
+            print(f"Captured Single-Expr:    {res['total_captured_single']} ({res['total_captured_single'] / res['total_lambdas'] * 100:.2f}% of total)")
             if res['total_captureless'] > 0:
                 print(f"                         ({res['total_captureless_single'] / res['total_captureless'] * 100:.2f}% of captureless)")
         else:
             print("Captureless Lambdas:     0")
             print("Captureless Single-Expr: 0")
+            print("Captured Single-Expr:    0")
         print("="*50)
 
     if len(all_results) > 1:
@@ -526,11 +535,13 @@ def main():
         if grand_total_lambdas > 0:
             print(f"Captureless Lambdas:     {grand_total_captureless} ({grand_total_captureless / grand_total_lambdas * 100:.2f}% of total)")
             print(f"Captureless Single-Expr: {grand_total_captureless_single} ({grand_total_captureless_single / grand_total_lambdas * 100:.2f}% of total)")
+            print(f"Captured Single-Expr:    {grand_total_captured_single} ({grand_total_captured_single / grand_total_lambdas * 100:.2f}% of total)")
             if grand_total_captureless > 0:
                 print(f"                         ({grand_total_captureless_single / grand_total_captureless * 100:.2f}% of captureless)")
         else:
             print("Captureless Lambdas:     0")
             print("Captureless Single-Expr: 0")
+            print("Captured Single-Expr:    0")
         print("="*50)
 
 if __name__ == '__main__':
