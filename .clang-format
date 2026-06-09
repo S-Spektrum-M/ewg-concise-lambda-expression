@@ -1,0 +1,28 @@
+# Based on the LLVM coding standards
+BasedOnStyle: LLVM
+IndentWidth: 4
+ColumnLimit: 80
+AccessModifierOffset: -4
+AllowShortFunctionsOnASingleLine: None
+AlignAfterOpenBracket: Align
+AlignConsecutiveAssignments: false
+BinPackArguments: false
+BinPackParameters: false
+FixNamespaceComments: true
+IncludeBlocks: Regroup
+IndentCaseLabels: true
+SortIncludes: true
+IncludeCategories:
+  - Regex:           '^<[a-z0-9_]+\.h>$'
+    Priority:        1
+  - Regex:           '^<sys/.*'
+    Priority:        1
+  - Regex:           '^<[a-z0-9_]+>$'
+    Priority:        2
+  - Regex:           '^<.*'
+    Priority:        3
+  - Regex:           '^("catalyst/.*"|<catalyst/.*>)'
+    Priority:        4
+BreakBeforeBinaryOperators: NonAssignment
+AlignOperands: Align
+AllowShortLambdasOnASingleLine: Inline

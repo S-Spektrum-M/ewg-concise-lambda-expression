@@ -1,0 +1,67 @@
+name: Build and Deploy WG21 Paper
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/s-spektrum-m/ewg-concise-lambda-expression-builder:latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Link pre-built dependencies
+        run: |
+          mkdir -p wg21/deps
+          if [ -d /opt/wg21/deps/pandoc ]; then
+            ln -s /opt/wg21/deps/pandoc wg21/deps/pandoc
+          fi
+          if [ -d /opt/wg21/deps/python ]; then
+            ln -s /opt/wg21/deps/python wg21/deps/python
+          else
+            mkdir -p wg21/deps/python
+          fi
+
+      - name: Build proposal HTML and PDF
+        run: |
+          make -o wg21/deps/python PROPOSAL.html
+          make -o wg21/deps/python PROPOSAL.pdf
+
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Prepare site directory
+        run: |
+          mkdir -p _site
+          # Copy the HTML to index.html so it serves as the home page
+          cp generated/PROPOSAL.html _site/index.html
+          # Copy the PDF so it can be downloaded at /PROPOSAL.pdf
+          cp generated/PROPOSAL.pdf _site/PROPOSAL.pdf
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
