@@ -20,9 +20,9 @@ RUN apt-get update && apt-get install -y \
 
 # Clone the wg21 repository, check out the specific commit, and build its dependencies.
 # The commit matches the pinned submodule commit in the stdx-posix repo.
-RUN git clone https://github.com/mpark/wg21.git /opt/wg21 && \
+RUN git clone https://github.com/S-Spektrum-M/wg21.git /opt/wg21 && \
     cd /opt/wg21 && \
-    git checkout dabffb606685a6ed2adcba5459e4866aa494287f && \
+    git checkout e9cd64d778755b33cffb4d978a2600e584725672 && \
     # Build TEST.html and TEST.pdf to trigger downloading pandoc, setting up the python venv,
     # and generating defaults/csl/annex-f dependencies.
     make TEST.html TEST.pdf
