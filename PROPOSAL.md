@@ -56,7 +56,7 @@ appear several times per pipeline:
 
 ::: cmptable
 
-### Before
+### C++23
 ```cpp
 auto result = v
     | std::views::filter([](auto &&x) {
@@ -70,7 +70,7 @@ auto result = v
       });
 ```
 
-### After
+### This Paper
 ```cpp
 auto result = v
     | std::views::filter((x) => x > 0)
