@@ -178,7 +178,8 @@ auto greet    = () => std::puts("hi");
 ---
 
 ```cpp
-// Mixing inferred and explicit parameter forms
+// Mixing inferred and explicit
+// parameter forms
 auto clamp_pos        = [](int x) {
     return std::max(0, x);
 };
