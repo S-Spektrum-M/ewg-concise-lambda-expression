@@ -149,39 +149,155 @@ captureless lambda of the corresponding equivalent form would be.
 
 ## Examples {#examples}
 
+::: cmptable
+
+### C++23
 ```cpp
-auto square    = (x) => x * x;              // [] (auto &&x) { return x * x;}
-auto add       = (x, y) => x + y;           // [] (auto &&x, auto &&y) {return x + y;};
-auto identity  = (x) => x;                  // [] (auto &&x) -> auto {return x;}
-                                            // returns a copy
-auto greet     = () => std::puts("hi");     // returns int (the result of puts)
+auto square   = [](auto&& x) {
+    return x * x;
+};
+auto add      = [](auto&& x, auto&& y) {
+    return x + y;
+};
+auto identity = [](auto&& x) {
+    return x;
+};
+auto greet    = [] {
+    return std::puts("hi");
+};
+```
 
+### This Paper
+```cpp
+auto square   = (x) => x * x;
+auto add      = (x, y) => x + y;
+auto identity = (x) => x;
+auto greet    = () => std::puts("hi");
+```
+
+---
+
+```cpp
 // Mixing inferred and explicit parameter forms
-auto clamp_pos = (int x) => std::max(0, x);
-auto container_access = (db, size_t y) => db[y];
+auto clamp_pos        = [](int x) {
+    return std::max(0, x);
+};
+auto container_access =
+[](auto&& db, size_t y) {
+    return db[y];
+};
+```
 
-// Concepts, void, and throw
-auto add_one = (std::integral auto x) => x + 1;
-auto log_err = (e) => std::println(std::cerr, "{}", e);
-auto error = (x) => throw std::runtime_error("error");
+```cpp
+auto clamp_pos        =
+    (int x) => std::max(0, x);
+auto container_access =
+    (db, size_t y) => db[y];
+```
+
+---
+
+```cpp
+// Concepts and throw
+auto add_one = [](std::integral auto x) {
+    return x + 1;
+};
+auto log_err =
+[](auto&& e) {
+    return std::println(std::cerr, "{}",
+                        e);
+};
+auto error   = [](auto&& x) {
+    return throw std::runtime_error(
+        "error");
+};
+```
+
+```cpp
+auto add_one =
+    (std::integral auto x) => x + 1;
+auto log_err =
+    (e) => std::println(std::cerr, "{}",
+                        e);
+auto error   =
+    (x) => throw std::runtime_error(
+        "error");
+```
+
+---
+
+```cpp
 // In a pipeline
 auto names = people
-           | views::filter((p) => p.age >= 18)
-           | views::transform((p) => p.name);
+           | views::filter([](auto&& p) {
+        return p.age >= 18; })
+           | views::transform([](auto&& p)
+            { return p.name; });
+```
 
+```cpp
+auto names = people
+           | views::filter(
+        (p) => p.age >= 18)
+           | views::transform(
+        (p) => p.name);
+```
+
+---
+
+```cpp
 // As a projection / comparator
-std::ranges::sort(employees, std::less{}, (e) => e.hire_date);
+std::ranges::sort(employees, std::less{},
+                  [](auto&& e) {
+                    return e.hire_date;
+                  });
+```
 
+```cpp
+std::ranges::sort(employees, std::less{},
+                  (e) => e.hire_date);
+```
+
+---
+
+```cpp
 // With std::visit
 std::visit(overloaded{
-    (int  i) => handle_int(i),
+    [](int i)   {
+        return handle_int(i);
+    },
+    [](auto& x) {
+        return handle_default(x);
+    },
+}, v);
+```
+
+```cpp
+std::visit(overloaded{
+    (int i)   => handle_int(i),
     (auto& x) => handle_default(x),
 }, v);
-
-// Parameter Packs
-auto print_hello = (auto... xs) => std::println("Hello, {} from {}!", xs...);
-
 ```
+
+---
+
+```cpp
+// Parameter packs
+auto print_hello =
+    [](auto... xs) {
+        return std::println(
+            "Hello, {} from {}!", xs...);
+    };
+```
+
+```cpp
+auto print_hello = (auto... xs) =>
+    std::println(
+        "Hello, {} from {}!",
+        xs...);
+```
+
+:::
 
 The body of a concise-lambda-expression is an *assignment-expression*, so `=>`
 binds more tightly than the comma operator. Consequently `(x) => a, b`{.cpp}
