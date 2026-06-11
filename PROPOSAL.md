@@ -21,10 +21,11 @@ This paper proposes a concise lambda expression syntax of the form
 `(params) => expr`{.cpp}, which lowers to a captureless generic lambda whose
 parameters default to forwarding references and whose return type is deduced
 via standard `auto`{.cpp} rules. The syntax is purely additive. It introduces
-the token (`=>`{.cpp}) into *primary-expression* along with a new lambda
-production, leaving the existing lambda grammar untouched.
+the token (`=>`{.cpp}) and a new *concise-lambda-expression* production at the
+*assignment-expression* level — alongside *throw-expression* and
+*yield-expression* — leaving the existing lambda grammar untouched.
 
-An empirical analysis across five major codebases (Abesil, Chromium, Folly, LLVM,
+An empirical analysis across five major codebases (Abseil, Chromium, Folly, LLVM,
 and QtBase) finds that single-expression lambdas account for
 52.67% of all lambdas, and of the lambdas that need no capture, 60.27% are
 single-expression. This proposal deliberately scopes to the captureless
@@ -95,7 +96,8 @@ expressible via the existing *lambda-expression* syntax.
 ## Syntax {#syntax}
 
 A new *concise-lambda-expression* production is added to
-*primary-expression*:
+*assignment-expression*, the same grammatical level at which
+*throw-expression* and *yield-expression* already sit:
 
 > | _concise-lambda-expression:_
 > |     `(` _concise-lambda-parameter-list~opt~_ `)` `=>` _assignment-expression_
@@ -108,9 +110,22 @@ A new *concise-lambda-expression* production is added to
 > |     _identifier_
 > |     _parameter-declaration_
 
-The token `=>`{.cpp} is also introduced into primary-expression by this proposal.
-The same token serves as the match-arm separator in the pattern-matching
-proposal [@P2688R5]; [](#pattern-matching) explains why the two uses do not conflict.
+Placing the production at the *assignment-expression* level — rather than in
+*primary-expression* — is deliberate and follows the existing convention for
+constructs whose right operand is an undelimited *assignment-expression*:
+*throw-expression* and *yield-expression* already live there for exactly this
+reason. Because the concise lambda's body is an undelimited
+*assignment-expression*, the lambda itself must sit at that level so that the
+body extends maximally to the right and the lambda is never captured as the
+tight leaf of a trailing operator. This placement resolves the entire family of
+trailing-operator interactions — including the `match`-expression composition of
+[](#pattern-matching) — at the grammar level, with no disambiguation rule
+required.
+
+The token `=>`{.cpp} is introduced into the grammar by this proposal via the
+*concise-lambda-expression* production. The same token serves as the match-arm
+separator in the pattern-matching proposal [@P2688R5]; [](#pattern-matching)
+explains why the two uses do not conflict.
 
 ## Semantics {#semantics}
 
@@ -179,6 +194,21 @@ in a single concise lambda:
 ```cpp
 auto log_and_return = (x) => (std::cout << "got " << x, x + 1);
 ```
+
+Because the *concise-lambda-expression* sits at the *assignment-expression*
+level, its body extends maximally to the right and the lambda is never itself
+the tight operand of a trailing operator. A concise lambda used as the callee of
+a call, an operand of a binary operator, or the object of a member access must
+therefore be parenthesized. In particular, an immediately-invoked concise lambda
+requires parentheses around the lambda itself:
+
+```cpp
+auto a = ((x) => x * x)(5);   // 25 — invokes the lambda
+auto b = (x) => x * x(5);     // a lambda whose body is `x * x(5)`
+```
+
+This mirrors the parenthesization of any immediately-invoked function expression
+and is the expected consequence of the maximal-munch body.
 
 ## Restrictions {#restrictions}
 
@@ -395,8 +425,7 @@ It is not yet settled whether attributes should be permitted on concise lambda
 parameters (e.g., `([[maybe_unused]] x) => x`{.cpp}) or on the generated call operator.
 Because this syntax omits the `lambda-specifier-seq`, standard placement for
 operator attributes (like `[[nodiscard]]`) is unavailable. Attributes applied
-to the *primary-expression* containing the lambda do not appertain to the
-generated `operator()`. We intend to seek EWG feedback on whether to extend
+to the enclosing expression do not appertain to the generated `operator()`. We intend to seek EWG feedback on whether to extend
 the grammar to explicitly support attributes or to leave them unsupported for
 this minimal syntax.
 
@@ -444,16 +473,35 @@ the parenthesized contents in that mode.
 
 ## Interaction with Pattern Matching {#pattern-matching}
 
-[@P2688R5] introduces `=>` as the separator between a *pattern* and its
-result expression inside a `match` expression. The two uses of `=>` occur
-in disjoint grammatical contexts: in [@P2688R5] the `=>` follows a *pattern*,
-whereas a *concise-lambda-expression*'s `=>` follows a parenthesized
-*concise-lambda-parameter-list* in *primary-expression* position. A concise
-lambda composes with `match` in both directions — a concise lambda may be
-the result expression of an arm, and a `match` expression may be the body
-`E` of a concise lambda — without ambiguity, because the arm's `=>` is
-reached only after a pattern is parsed and the body's `=>` only after a
-parenthesized list.
+[@P2688R5] uses `=>` as the arm separator between a *pattern* and its result
+expression inside a `match` expression. The two uses never collide as *tokens*
+— an arm's `=>` follows a *pattern*, whereas a *concise-lambda-expression*'s
+`=>` follows a parenthesized *concise-lambda-parameter-list*. More importantly,
+the *composition* of the two constructs is resolved not by the token but by
+grammar placement: a *concise-lambda-expression* is an *assignment-expression*,
+whereas a *match-expression*'s subject is a *pm-expression*. A concise lambda
+can therefore *contain* a *match-expression* as its body, but cannot itself *be*
+a match subject without parentheses, so `(x) => x match { ... }`{.cpp} is
+unambiguously the former.
+
+Concretely, consider the two candidate parses of `(x) => x match { ... }`{.cpp}:
+
+- **Parse A** — the body is the *match-expression*:
+  `(x) => (x match { ... })`{.cpp}.
+- **Parse B** — the closure is the match subject:
+  `((x) => x) match { ... }`{.cpp}.
+
+Parse B requires the closure `(x) => x`{.cpp} to be a *pm-expression*. Because
+the *concise-lambda-expression* production sits at the *assignment-expression*
+level (see [](#syntax)), `(x) => x`{.cpp} is an *assignment-expression*, and
+there is no production that reduces an *assignment-expression* down to a
+*pm-expression* — the expression-precedence grammar only flows the other way.
+Parse B is therefore ungrammatical, and Parse A — whose body is the maximal
+*assignment-expression*, into which a *match-expression* reduces — is the unique
+parse. The same argument eliminates every other "lambda as a tight leaf"
+reading, such as `((x) => f)(0)`{.cpp}, `((x) => a) + b`{.cpp}, and
+`((x) => p).m`{.cpp}, in one stroke: none of those operand positions accept an
+*assignment-expression*.
 
 # Prior Art {#prior-art}
 
@@ -575,10 +623,15 @@ future revision.
 
 The following is not final; full wording will follow EWG direction in R1.
 
-In [expr.prim]{.sref}, add a new subclause [expr.prim.lambda.concise] ("Concise lambda expressions"):
+In [expr]{.sref}, add a new subclause [expr.lambda.concise] ("Concise lambda
+expressions"). The *concise-lambda-expression* production hooks into
+*assignment-expression* (alongside *throw-expression* and *yield-expression*),
+so the subclause is no longer part of the [expr.prim.*] tree; placing it
+immediately after [expr.prim.lambda] keeps the lambda material together, and the
+final clause number is left to the editor:
 
 ::: add
-### [expr.prim.lambda.concise] Concise lambda expressions {.unnumbered}
+### [expr.lambda.concise] Concise lambda expressions {.unnumbered}
 
 | _concise-lambda-expression:_
 |     `(` _concise-lambda-parameter-list~opt~_ `)` `=>` _assignment-expression_
@@ -601,6 +654,23 @@ the *parameter-declaration* `auto &&x`, and leaving each
 If a *concise-lambda-parameter* can be interpreted as both an *identifier* and a *parameter-declaration*, it is interpreted as an *identifier*.
 
 [2]{.pnum} A *concise-lambda-parameter* that is a *parameter-declaration* shall not contain a default argument.
+
+[3]{.pnum} [*Note*: Because a *concise-lambda-expression* is an
+*assignment-expression* and not a *primary-expression*, it is not an operand of
+any operator that requires a *unary-expression*, *pm-expression*,
+*postfix-expression*, or *primary-expression*. Consequently the body *E* extends
+maximally to the right, and a *concise-lambda-expression* used as the subject of
+a *match-expression*, as an operand of a binary operator, or as the callee of a
+call must be parenthesized. — *end note*]
+
+[*Example*:
+
+```cpp
+auto f = (x) => x match { _ => 42 };    // body is the match-expression; f is callable
+auto g = ((x) => x) match { _ => 42 };  // matches the closure; g == 42
+```
+
+— *end example*]
 :::
 
 In [lex.operators]{.sref}, add `=>` to the list of possible values of *operator-or-punctuator*:
@@ -611,10 +681,12 @@ In [lex.operators]{.sref}, add `=>` to the list of possible values of *operator-
 |     `=>`
 :::
 
-In [gram.expr]{.sref}, extend *primary-expression* with the new alternative:
+In [expr.ass]{.sref} and [gram.expr]{.sref}, extend *assignment-expression* with
+a new alternative, at the same level as *throw-expression* and
+*yield-expression*:
 
 ::: add
-| _primary-expression:_
+| _assignment-expression:_
 |     ...
 |     _concise-lambda-expression_
 :::
@@ -633,6 +705,19 @@ In [gram.expr]{.sref}, add the new productions for *concise-lambda-expression*:
 |     _identifier_
 |     _parameter-declaration_
 :::
+
+In [cpp.predefined]{.sref}, add a new entry to Table [tab:cpp.predefined.ft]
+("Language feature-test macros"), in alphabetical order:
+
+::: add
+| Macro name | Value |
+| :--- | :--- |
+| `__cpp_concise_lambdas` | `20XXXXL` |
+:::
+
+The value `20XXXXL` is a placeholder; per the usual convention, SG10 assigns the
+year-and-month value (`YYYYMML`) corresponding to the meeting at which the
+feature is adopted.
 
 # Acknowledgments {#acknowledgments}
 
